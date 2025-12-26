@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <iostream>
 #include "system.h"
+#include "utils.h"
 
 void write_xyz(std::ofstream& fout, const std::vector<Particle>& system){
 	fout << system.size() << "\n\n";

@@ -1,5 +1,5 @@
-#ifndef PARAMETERS 
-#define PARAMETERS
+#ifndef PARAMETERS_H
+#define PARAMETERS_H
 
 struct Parameters{
 	int N;
@@ -8,11 +8,10 @@ struct Parameters{
 	double epsilon;
 	double sigma;
 	double mass_au;
-	double pbcx_angstrom;
-	double pbcy_angstrom;
-	double pbcz_angstrom;
+	double pbc_L_angstrom;
 	int write_steps;
 	std::string output;
+	std::string output_opt;
 };
 
 Parameters read_config(const std::string& filename);

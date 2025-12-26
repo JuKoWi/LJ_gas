@@ -1,23 +1,12 @@
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <unordered_map>
-
-struct Parameters{
-	int N;
-	int n_steps;
-	double dt;
-	double epsilon;
-	double sigma;
-	double mass_au;
-	double pbcx_angstrom;
-	double pbcy_angstrom;
-	double pbcz_angstrom;
-	int write_steps;
-	std::string output;
-};
+#include "read_input.h"
 
 Parameters read_config(const std::string& filename){
+	std::cout << "Start reading config file" << std::endl;
 	std::ifstream file(filename);
 	if (!file){
 		throw std::runtime_error("Cannot open config file!");
@@ -47,12 +36,12 @@ Parameters read_config(const std::string& filename){
 	p.epsilon = std::stod(values.at("epsilon"));
 	p.sigma = std::stod(values.at("sigma"));
 	p.mass_au = std::stod(values.at("mass"));
-	p.pbcx_angstrom = std::stod(values.at("pbcx"));
-	p.pbcy_angstrom = std::stod(values.at("pbcy"));
-	p.pbcz_angstrom = std::stod(values.at("pbcz"));
+	p.pbc_L_angstrom = std::stod(values.at("pbc_L"));
 	p.write_steps = std::stoi(values.at("write_steps"));
 	p.output = values.at("output");
+	p.output_opt = values.at("output_opt");
 
+	std::cout << "Finished reading config" << std::endl;
 	return p;
 }
 
