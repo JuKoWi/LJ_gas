@@ -12,4 +12,5 @@ void update_pos_pbc(std::vector<Particle>& system, const Parameters& params);
 void velocity_verlet(std::vector<Particle>& system, const Parameters& params, double dt);
 double pair_potential_energy(double dr2, Parameters params);
 double potential_energy(const std::vector<Particle>& system, Parameters params);
+double kinetic_energy(const std::vector<Particle>& system, Parameters params);
 #endif

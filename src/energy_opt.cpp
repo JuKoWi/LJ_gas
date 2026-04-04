@@ -6,20 +6,19 @@
 #include "system.h"
 #include "utils.h"
 
+// Return LJ-force between two particles
 std::vector<double> LJ_force(double dx, double dy, double dz, const Parameters& params)
 {
     double r2 = dx*dx + dy*dy + dz*dz;
+	double r = std::sqrt(r2);
     if (r2 < 1e-12) return {0.0, 0.0, 0.0};
 
-    double inv_r2 = 1.0 / r2;
-    double inv_r6 = inv_r2 * inv_r2 * inv_r2;
-    double inv_r12 = inv_r6 * inv_r6;
-
-    double f = 24 * params.epsilon * inv_r2 * (2 * std::pow(params.sigma,12) * inv_r12 - std::pow(params.sigma, 6) * inv_r6);
-
+	double inv_r = 1 / r;
+	double f = 48 * params.epsilon * (std::pow(params.sigma * inv_r, 12) * inv_r - 0.5 * std::pow(params.sigma * inv_r, 6) * inv_r);
     return {f * dx, f * dy, f * dz};
 }
 
+// update forces taking pbc into account
 void update_force_pbc(std::vector<Particle>& system, const Parameters& params){
 	for (auto& p : system){
 		p.fx = 0;
@@ -32,23 +31,23 @@ void update_force_pbc(std::vector<Particle>& system, const Parameters& params){
 			double dx = system[j].x - system[i].x;
 			double dy = system[j].y - system[i].y;
 			double dz = system[j].z - system[i].z;
-			if (dx > 0.5 * params.pbc_L_angstrom){
-				dx -= params.pbc_L_angstrom;
+			if (dx > 0.5 * params.pbc_L_nm){
+				dx -= params.pbc_L_nm;
 			}
-			if (dx < -0.5 * params.pbc_L_angstrom){
-				dx += params.pbc_L_angstrom;
+			if (dx < -0.5 * params.pbc_L_nm){
+				dx += params.pbc_L_nm;
 			}
-			if (dy > 0.5 * params.pbc_L_angstrom){
-				dy -= params.pbc_L_angstrom;
+			if (dy > 0.5 * params.pbc_L_nm){
+				dy -= params.pbc_L_nm;
 			}
-			if (dy < -0.5 * params.pbc_L_angstrom){
-				dy += params.pbc_L_angstrom;
+			if (dy < -0.5 * params.pbc_L_nm){
+				dy += params.pbc_L_nm;
 			}
-			if (dz > 0.5 * params.pbc_L_angstrom){
-				dz -= params.pbc_L_angstrom;
+			if (dz > 0.5 * params.pbc_L_nm){
+				dz -= params.pbc_L_nm;
 			}
-			if (dz < -0.5 * params.pbc_L_angstrom){
-				dz += params.pbc_L_angstrom;
+			if (dz < -0.5 * params.pbc_L_nm){
+				dz += params.pbc_L_nm;
 			}
 
 			std::vector<double> force_comps = LJ_force(dx, dy, dz, params);
@@ -103,23 +102,23 @@ void energy_opt(std::vector<Particle>& system, Parameters& params){
 
 void update_pos_pbc(std::vector<Particle>& system, const Parameters& params){ // 0-centered simulation box
 	for (auto& p : system){
-		if (p.x > params.pbc_L_angstrom*0.5){
-			p.x -= params.pbc_L_angstrom * std::floor(p.x / params.pbc_L_angstrom);
+		if (p.x > params.pbc_L_nm*0.5){
+			p.x -= params.pbc_L_nm * std::floor(p.x / params.pbc_L_nm);
 		}
-		if (p.y > params.pbc_L_angstrom*0.5){
-			p.y -= params.pbc_L_angstrom * std::floor(p.y / params.pbc_L_angstrom);
+		if (p.y > params.pbc_L_nm*0.5){
+			p.y -= params.pbc_L_nm * std::floor(p.y / params.pbc_L_nm);
 		}
-		if (p.z > params.pbc_L_angstrom*0.5){
-			p.z -= params.pbc_L_angstrom * std::floor(p.z / params.pbc_L_angstrom);
+		if (p.z > params.pbc_L_nm*0.5){
+			p.z -= params.pbc_L_nm * std::floor(p.z / params.pbc_L_nm);
 		}
-		if (p.x < -params.pbc_L_angstrom*0.5){
-			p.x -= params.pbc_L_angstrom * std::floor(p.x / params.pbc_L_angstrom);
+		if (p.x < -params.pbc_L_nm*0.5){
+			p.x -= params.pbc_L_nm * std::floor(p.x / params.pbc_L_nm);
 		}
-		if (p.y < -params.pbc_L_angstrom*0.5){
-			p.y -= params.pbc_L_angstrom * std::floor(p.y / params.pbc_L_angstrom);
+		if (p.y < -params.pbc_L_nm*0.5){
+			p.y -= params.pbc_L_nm * std::floor(p.y / params.pbc_L_nm);
 		}
-		if (p.z < -params.pbc_L_angstrom*0.5){
-			p.z -= params.pbc_L_angstrom * std::floor(p.z / params.pbc_L_angstrom);
+		if (p.z < -params.pbc_L_nm*0.5){
+			p.z -= params.pbc_L_nm * std::floor(p.z / params.pbc_L_nm);
 		}
 	}
 }
@@ -134,7 +133,6 @@ void velocity_verlet(std::vector<Particle>& system, const Parameters& params, do
 		p.x += p.vx * dt;
 		p.y += p.vy * dt;
 		p.z += p.vz * dt;
-		
 	}
 	update_pos_pbc(system, params);
 	update_force_pbc(system, params);
@@ -145,12 +143,14 @@ void velocity_verlet(std::vector<Particle>& system, const Parameters& params, do
 	}
 }	
 
+// LJ potential contribution for one pair in kj/mol
 double pair_potential_energy(double dr2, Parameters params){
 	double U;
-	U = 4 * params.epsilon * (std::pow(params.sigma*params.sigma/dr2, 6) - std::pow(params.sigma * params.sigma/dr2, 3));
+	U = 4 * params.epsilon * (std::pow(params.sigma / dr2, 12) - std::pow(params.sigma / dr2, 6));
 	return U;
 }
 
+// total potential energy in kj/mol
 double potential_energy(const std::vector<Particle>& system, Parameters params){
 	double dr2;
 	double dx;
@@ -167,6 +167,17 @@ double potential_energy(const std::vector<Particle>& system, Parameters params){
 		}
 	}
 	return U;
+}
+
+// total kinetic energy in kj/mol
+double kinetic_energy(const std::vector<Particle>& system, Parameters params){
+	double Ekin = 0;
+	for (auto& p : system){
+		Ekin += params.mass_au/2 * p.vx * p.vx; // component wise contribution in kj/mol
+		Ekin += params.mass_au/2 * p.vy * p.vy; // component wise contribution in kj/mol
+		Ekin += params.mass_au/2 * p.vz * p.vz; // component wise contribution in kj/mol
+	}
+	return Ekin;
 }
 
 

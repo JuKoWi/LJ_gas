@@ -32,14 +32,18 @@ Parameters read_config(const std::string& filename){
 	Parameters p;
 	p.N = std::stoi(values.at("N"));
 	p.n_steps = std::stoi(values.at("n_steps"));
-	p.dt = std::stod(values.at("dt"));
-	p.epsilon = std::stod(values.at("epsilon"));
-	p.sigma = std::stod(values.at("sigma"));
-	p.mass_au = std::stod(values.at("mass"));
-	p.pbc_L_angstrom = std::stod(values.at("pbc_L"));
+	p.dt = std::stod(values.at("dt")); //ps
+	p.epsilon = std::stod(values.at("epsilon")); // kj/mol
+	p.sigma = std::stod(values.at("sigma")); // nm
+	p.mass_au = std::stod(values.at("mass")); // u
+	p.pbc_L_nm = std::stod(values.at("pbc_L")); //nm
 	p.write_steps = std::stoi(values.at("write_steps"));
 	p.output = values.at("output");
 	p.output_opt = values.at("output_opt");
+
+	std::cout << p.N << std::endl;
+	std::cout << p.dt << std::endl;
+	std::cout << p.n_steps << std::endl;
 
 	std::cout << "Finished reading config" << std::endl;
 	return p;

@@ -8,7 +8,7 @@ struct Parameters{
 	double epsilon;
 	double sigma;
 	double mass_au;
-	double pbc_L_angstrom;
+	double pbc_L_nm;
 	int write_steps;
 	std::string output;
 	std::string output_opt;
