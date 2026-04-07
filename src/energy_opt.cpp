@@ -11,15 +11,16 @@ std::vector<double> LJ_force(double dx, double dy, double dz, const Parameters& 
 {
     double r2 = dx*dx + dy*dy + dz*dz;
 	double r = std::sqrt(r2);
-    if (r2 < 1e-12) return {0.0, 0.0, 0.0};
+    if (r2 < 1e-12) return {0.0, 0.0, 0.0}; // TODO: use some maximal value, not 0
 
 	double inv_r = 1 / r;
-	double f = 48 * params.epsilon * (std::pow(params.sigma * inv_r, 12) * inv_r - 0.5 * std::pow(params.sigma * inv_r, 6) * inv_r);
+	double f = 24 * params.epsilon * (2 * std::pow(params.sigma * inv_r, 12) * inv_r - std::pow(params.sigma * inv_r, 6) * inv_r);
     return {f * dx, f * dy, f * dz};
 }
 
 // update forces taking pbc into account
 void update_force_pbc(std::vector<Particle>& system, const Parameters& params){
+	double square_cutoff = 9; // interaction cutoff for the square distance 
 	for (auto& p : system){
 		p.fx = 0;
 		p.fy = 0;
@@ -50,22 +51,25 @@ void update_force_pbc(std::vector<Particle>& system, const Parameters& params){
 				dz += params.pbc_L_nm;
 			}
 
-			std::vector<double> force_comps = LJ_force(dx, dy, dz, params);
-			system[i].fx += force_comps[0];
-			system[i].fy += force_comps[1];
-			system[i].fz += force_comps[2];
+			if (dx*dx + dy*dy + dz*dz < square_cutoff){
+				std::vector<double> force_comps = LJ_force(dx, dy, dz, params);
+				system[i].fx += force_comps[0];
+				system[i].fy += force_comps[1];
+				system[i].fz += force_comps[2];
 
-			system[j].fx -= force_comps[0];
-			system[j].fy -= force_comps[1];
-			system[j].fz -= force_comps[2];
+				system[j].fx -= force_comps[0];
+				system[j].fy -= force_comps[1];
+				system[j].fz -= force_comps[2];
+			}
 		}
 	}
 }
 
 void energy_opt(std::vector<Particle>& system, Parameters& params){
-	double threshold = 0.0000001 * params.N;
+	double threshold = 1e-3 * params.N;
 	double total_force_sqr = 0;
-	double eta = 0.001;
+	double eta = 1e-3;
+	double maxstep = 0.01; //nm
 	int max_rep = 1000;
 	std::ofstream fout_opt(params.output_opt);
 	write_xyz(fout_opt, system);
@@ -77,49 +81,45 @@ void energy_opt(std::vector<Particle>& system, Parameters& params){
 			total_force_sqr += p.fy * p.fy;
 			total_force_sqr += p.fz * p.fz;
 		}
-		std::cout << "Iteration: \n";
-		std::cout << i << std::endl;
-		std::cout << "Position particle 1 :\n";
-		std::cout << system[0].x << std::endl;
-		std::cout << "Total force: \n";
-		std::cout << total_force_sqr << std::endl;
+		if (i % 100 == 0){
+			std::cout << "Iteration: " << i << " Total force: " << total_force_sqr << std::endl;
+		}
 		if (total_force_sqr < threshold){
 			std::cout << "Minimized energy below force-threshold \n";
 			fout_opt.close();
 			return;
 		}
+		double Epot_before = potential_energy(system, params);
 		for (auto& p:system){
-			p.x += eta * p.fx;
-			p.y += eta * p.fy;
-			p.z += eta * p.fz;
+			double dx = eta * p.fx;
+			p.x += (std::abs(dx) < maxstep) ? dx : std::copysign(maxstep, dx);
+			double dy = eta * p.fy;
+			p.y += (std::abs(dy) < maxstep) ? dy : std::copysign(maxstep, dy);
+			double dz = eta * p.fz;
+			p.z += (std::abs(dz) < maxstep) ? dz : std::copysign(maxstep, dz);
 		}
 		update_pos_pbc(system, params);
 		write_xyz(fout_opt, system);
+		double Epot_after = potential_energy(system, params);
+		if (Epot_after > Epot_before){
+			eta *= 0.5;
+		}
+		else{
+			eta *= 1.05;
+		}
 	}
 	fout_opt.close();
 	std::cout << "Stopped energy minimization after 1000 iterations \n";
 }
 
+// map positions outside simulation box back to simulation box
 void update_pos_pbc(std::vector<Particle>& system, const Parameters& params){ // 0-centered simulation box
+	double L = params.pbc_L_nm;
+	double half_box = L * 0.5;
 	for (auto& p : system){
-		if (p.x > params.pbc_L_nm*0.5){
-			p.x -= params.pbc_L_nm * std::floor(p.x / params.pbc_L_nm);
-		}
-		if (p.y > params.pbc_L_nm*0.5){
-			p.y -= params.pbc_L_nm * std::floor(p.y / params.pbc_L_nm);
-		}
-		if (p.z > params.pbc_L_nm*0.5){
-			p.z -= params.pbc_L_nm * std::floor(p.z / params.pbc_L_nm);
-		}
-		if (p.x < -params.pbc_L_nm*0.5){
-			p.x -= params.pbc_L_nm * std::floor(p.x / params.pbc_L_nm);
-		}
-		if (p.y < -params.pbc_L_nm*0.5){
-			p.y -= params.pbc_L_nm * std::floor(p.y / params.pbc_L_nm);
-		}
-		if (p.z < -params.pbc_L_nm*0.5){
-			p.z -= params.pbc_L_nm * std::floor(p.z / params.pbc_L_nm);
-		}
+		p.x -= L * std::floor((p.x + half_box) / L);
+		p.y -= L * std::floor((p.y + half_box) / L);
+		p.z -= L * std::floor((p.z + half_box) / L);
 	}
 }
 
@@ -145,8 +145,8 @@ void velocity_verlet(std::vector<Particle>& system, const Parameters& params, do
 
 // LJ potential contribution for one pair in kj/mol
 double pair_potential_energy(double dr2, Parameters params){
-	double U;
-	U = 4 * params.epsilon * (std::pow(params.sigma / dr2, 12) - std::pow(params.sigma / dr2, 6));
+	double sqr_sigma = params.sigma * params.sigma;
+	double U = 4 * params.epsilon * (std::pow(sqr_sigma / dr2, 6) - std::pow(sqr_sigma / dr2, 3));
 	return U;
 }
 
@@ -180,5 +180,5 @@ double kinetic_energy(const std::vector<Particle>& system, Parameters params){
 	return Ekin;
 }
 
-
+// find the maximal force on all particles
 

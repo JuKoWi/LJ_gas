@@ -1,13 +1,10 @@
 # Load the trajectory file
-mol new traj.xyz type xyz waitfor all
+mol new opt.xyz type xyz waitfor all
 
 # Set drawing style
 mol delrep 0 top                  ;# delete default representation
 mol addrep top                    ;# add new one
 mol modstyle 0 top VDW 0.3 12.0  ;# VDW spheres, radius 0.3, resolution 12
-
-pbc set {100 100 100} -all
-pbc box -color red -width 3 -on -center origin
 
 # Optional: color by atom index
 #mol modcolor 0 top Index

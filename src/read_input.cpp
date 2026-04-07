@@ -36,14 +36,14 @@ Parameters read_config(const std::string& filename){
 	p.epsilon = std::stod(values.at("epsilon")); // kj/mol
 	p.sigma = std::stod(values.at("sigma")); // nm
 	p.mass_au = std::stod(values.at("mass")); // u
-	p.pbc_L_nm = std::stod(values.at("pbc_L")); //nm
+	p.pbc_L_nm = std::stod(values.at("pbc_L")); //nm, sidelength of simulation box
 	p.write_steps = std::stoi(values.at("write_steps"));
 	p.output = values.at("output");
 	p.output_opt = values.at("output_opt");
 
-	std::cout << p.N << std::endl;
-	std::cout << p.dt << std::endl;
-	std::cout << p.n_steps << std::endl;
+	std::cout << p.N << " atoms" << std::endl;
+	std::cout << "timestep: " << p.dt << " ps" << std::endl;
+	std::cout << p.n_steps << " steps" << std::endl;
 
 	std::cout << "Finished reading config" << std::endl;
 	return p;

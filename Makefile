@@ -4,7 +4,7 @@ BIN_DIR := bin
 
 SRCS := $(wildcard $(SRC_DIR)/*.cpp)
 CXX := clang++
-CXXFLAGS := -Wall -Wextra -std=c++20 -Iinclude
+CXXFLAGS := -Wall -Wextra -std=c++20 -Iinclude -fopenmp
 
 TARGET_BIN := $(BIN_DIR)/$(TARGET)
 
