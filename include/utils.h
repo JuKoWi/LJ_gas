@@ -3,11 +3,12 @@
 
 #include "system.h"
 
-void write_xyz(std::ofstream& fout, const std::vector<Particle>& system);
-void write_energy_force(std::ofstream& fout, double time, double Ekin, double Epot);
+void write_frame(std::ofstream& fout, const System& system);
+void write_frame_diagnostics(std::ofstream& fout, double time, double Ekin, double Epot, double T_K);
 
 namespace PhysicalConstants{
-    constexpr double AVOGADRO = 6.02214067e23;
-}
+    constexpr double AVOGADRO {6.02214067e23} ;
+    constexpr double K_B {8.314e-3 } ; // kJ/(mol * K)
 
+}
 #endif

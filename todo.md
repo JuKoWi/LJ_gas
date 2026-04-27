@@ -1,6 +1,7 @@
-- check units force
-- initialize positions from file
-- try harmonic oscillator
+- set up system as object with pbc
+- verlet list
+- better velocity initialization
+- calculate temp
 - solve two body problem with LJ-potential analytically
 - write max force to file
 - check bottleneck
