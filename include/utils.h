@@ -3,7 +3,6 @@
 
 #include "system.h"
 
-void write_frame(std::ofstream& fout, const System& system);
 void write_frame_diagnostics(std::ofstream& fout, double time, double Ekin, double Epot, double T_K);
 
 namespace PhysicalConstants{

@@ -1,5 +1,7 @@
+source $env(VMDDIR)/plugins/noarch/tcl/pbctools2.8/pbctools.tcl
+package require pbctools
 # Load the trajectory file
-mol new traj.xyz type xyz waitfor all
+mol new traj.lammpstrj type lammpstrj waitfor all
 
 # Set drawing style
 mol delrep 0 top                  ;# delete default representation
@@ -11,6 +13,9 @@ mol modstyle 0 top VDW 0.1 12.0  ;# VDW spheres, radius 0.3, resolution 12
 
 # Set background to white
 #color Display Background white
+
+pbc box -center origin
+
 
 # Play the trajectory
 animate goto 0        ;# rewind to start

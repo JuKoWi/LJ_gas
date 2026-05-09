@@ -1,0 +1,33 @@
+{
+	"types":{
+		"Na-ION": {
+			"element": "Na",
+			"charge": 1,
+			"mass" : 23,
+			"sigma": 1,
+			"epsilon": 1 
+		},
+		"Ar": {
+			"element": "Ar",
+			"charge": 0,
+			"mass" : 40,
+			"sigma": 0.3405,
+			"epsilon": 0.9960 
+		},
+		"O-TIP3P": {
+			"element": "O",
+			"charge": -0.834,
+			"mass": 15.9994,
+			"sigma": 0.31507,
+			"epsilon": 0.6364 
+		},
+		"H-TIP3P": {
+			"element": "H",
+			"charge": 0.417,
+			"mass": 1.0,
+			"sigma": 0.04,
+			"epsilon": 0.192 
+		}
+	}
+
+}
