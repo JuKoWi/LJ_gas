@@ -33,6 +33,9 @@ void System::initialize_atoms(const std::string& geom_file, std::unordered_map<s
         x.push_back(atom["pos"][0]);
         y.push_back(atom["pos"][1]);
         z.push_back(atom["pos"][2]);
+        x_at_verlet.push_back(atom["pos"][0]);
+        y_at_verlet.push_back(atom["pos"][1]);
+        z_at_verlet.push_back(atom["pos"][2]);
         vx.push_back(0.0);
         vy.push_back(0.0);
         vz.push_back(0.0);
@@ -45,8 +48,23 @@ void System::initialize_atoms(const std::string& geom_file, std::unordered_map<s
         masses_gmol.push_back(atom_type_dict.at(atom["type"]).mass);
     }
     N = atom_types.size();
+    verlet_list.resize(N);
     deg_of_freedom = 3 * N - 3;
     set_lj_pairs();
+
+    // set lj and verlet cutoffs
+    // lj based on maximal pair-sigma
+    // constant verlet skin
+    double max_pair_cutoff {};
+    for (int i=0; i<N; ++i){
+        for (int j=0; j<N; ++j){
+            double cutoff = 2.5 * pair_sigma_nm[i*N + j];
+            max_pair_cutoff = std::max(cutoff, max_pair_cutoff);
+        }
+    }
+    lj_cutoff_nm = max_pair_cutoff;
+    verlet_cutoff_nm = lj_cutoff_nm + verlet_skin_nm;
+    update_verlet();
 
     assert(atom_types.size() == x.size());
     assert(x.size() == y.size());
@@ -70,12 +88,11 @@ void System::set_lj_pairs(){
 }
 
 void System::do_verlet_step(double dt){
-    //TODO: update verlet
     update_forces();
     for (int i=0; i<N; i++){
-        vx[i] = 0.5 * fx[i] / masses_gmol[i] * dt;
-        vy[i] = 0.5 * fy[i] / masses_gmol[i] * dt;
-        vz[i] = 0.5 * fz[i] / masses_gmol[i] * dt;
+        vx[i] += 0.5 * fx[i] / masses_gmol[i] * dt;
+        vy[i] += 0.5 * fy[i] / masses_gmol[i] * dt;
+        vz[i] += 0.5 * fz[i] / masses_gmol[i] * dt;
 
         x[i] += vx[i] * dt;
         y[i] += vy[i] * dt;
@@ -84,13 +101,13 @@ void System::do_verlet_step(double dt){
     update_positions();
     update_forces();
     for (int i=0; i<N; i++){
-        vx[i] = 0.5 * fx[i] / masses_gmol[i] * dt;
-        vy[i] = 0.5 * fy[i] / masses_gmol[i] * dt;
-        vz[i] = 0.5 * fz[i] / masses_gmol[i] * dt;
+        vx[i] += 0.5 * fx[i] / masses_gmol[i] * dt;
+        vy[i] += 0.5 * fy[i] / masses_gmol[i] * dt;
+        vz[i] += 0.5 * fz[i] / masses_gmol[i] * dt;
     }
 }
 
-void System::do_simulation_step(double dt, int step_count){
+void System::do_simulation_step(double dt){ // step_count as additional argument
     do_verlet_step(dt);
 }
 
@@ -99,24 +116,52 @@ void System::update_forces(){
     std::fill(fy.begin(), fy.end(), 0.0);
     std::fill(fz.begin(), fz.end(), 0.0);
 
-    update_lj_forces();
+    update_lj_forces(true);
 }
 
-void System::update_lj_forces(){
-    for (int i=0; i<N; ++i){
-        for (int j=i+1; j<N; ++j){
-            double dx {minimum_image_distance(x[j] - x[i], box_size[0])};
-            double dy {minimum_image_distance(y[j] - y[i], box_size[1])};
-            double dz {minimum_image_distance(z[j] - z[i], box_size[2])};
-            if (dx*dx + dy*dy + dz*dz < std::pow(square_lj_cutoff * pair_sigma_nm[i*N + j], 2)){
-                Vec3 f_lj {LJ_force(dx, dy, dz, pair_sigma_nm[i*N + j], pair_epsilon_kjmol[i*N +j])};
-				fx[i] -= f_lj.x;
-				fy[i] -= f_lj.y;
-				fz[i] -= f_lj.z;
+void System::update_lj_forces(bool verlet){
+	if (verlet){
+        if (verlet_update_required()){
+            update_verlet();
+        }
+		for (int i = 0; i<N; ++i){
+			for (auto& j : verlet_list[i]){
+				if (j<=i){
+					continue;
+				}
+				double dx { minimum_image_distance(x[j] - x[i], box_size[0]) };
+				double dy { minimum_image_distance(y[j] - y[i], box_size[1]) };
+				double dz { minimum_image_distance(z[j] - z[i], box_size[2]) };
 
-				fx[j] += f_lj.x;
-				fy[j] += f_lj.y;
-				fz[j] += f_lj.z;
+				if (dx*dx + dy*dy + dz*dz < lj_cutoff_nm * lj_cutoff_nm){
+                    Vec3 f_lj {LJ_force(dx, dy, dz, pair_sigma_nm[i*N + j], pair_epsilon_kjmol[i*N +j])};
+				    fx[i] -= f_lj.x;
+				    fy[i] -= f_lj.y;
+				    fz[i] -= f_lj.z;
+
+				    fx[j] += f_lj.x;
+				    fy[j] += f_lj.y;
+				    fz[j] += f_lj.z;
+				}
+			}
+		}
+	}
+    else{
+        for (int i=0; i<N; ++i){
+            for (int j=i+1; j<N; ++j){
+                double dx {minimum_image_distance(x[j] - x[i], box_size[0])};
+                double dy {minimum_image_distance(y[j] - y[i], box_size[1])};
+                double dz {minimum_image_distance(z[j] - z[i], box_size[2])};
+                if (dx*dx + dy*dy + dz*dz < std::pow(lj_cutoff_nm, 2)){
+                    Vec3 f_lj {LJ_force(dx, dy, dz, pair_sigma_nm[i*N + j], pair_epsilon_kjmol[i*N +j])};
+				    fx[i] -= f_lj.x;
+				    fy[i] -= f_lj.y;
+				    fz[i] -= f_lj.z;
+
+				    fx[j] += f_lj.x;
+				    fy[j] += f_lj.y;
+				    fz[j] += f_lj.z;
+                }
             }
         }
     }
@@ -137,7 +182,9 @@ double minimum_image_distance(double dx, double L){
 inline Vec3 LJ_force(double dx, double dy, double dz, double sigma, double epsilon) {
     double r2 {dx*dx + dy*dy + dz*dz};
     Vec3 f_vec {};
-    if (r2 < 1e-12) return f_vec; // TODO: use some maximal value, not 0
+    if (r2 < 1e-10){
+        r2 = 1e-10;
+    } 
 	double r {std::sqrt(r2)};
 
 	double inv_r {1 / r};
@@ -165,79 +212,101 @@ void System::update_positions(){ // 0-centered simulation box
 
 void System::run_simulation(JobParameters params){
 	std::ofstream fout_traj(params.outfile_traj_lammps);
-	double time {};
+    std::ofstream fout_energy(params.outfile_energy);
 	for (int i = 0; i < params.n_steps; ++i){
-		do_simulation_step(params.dt, i);
+		do_simulation_step(params.dt);
 		if (i % params.write_steps == 0){
 			write_lammpsdump_frame(fout_traj, i);
+            write_frame_diagnostics(fout_energy, 
+                i * params.dt, 
+                get_kinetic_energy(), 
+                get_total_lj_potential(), 
+                get_temp());
 			// write_xyz_frame(fout_traj, system);
-			// time = i * params.dt ;// time in ps
-			// Ekin = kinetic_energy(system);
-			// Epot = potential_energy(system, params);
-			// write_frame_diagnostics(fout_energy, time, Ekin, Epot, system.get_temp());
 		}
 	}
 }
 
+double System::get_kinetic_energy(){
+    double Ekin {};
+    for (int i=0; i<N; ++i){
+		Ekin += masses_gmol[i]/2 * vx[i] * vx[i]; // component wise contribution in kj/mol
+		Ekin += masses_gmol[i]/2 * vy[i] * vy[i]; // component wise contribution in kj/mol
+		Ekin += masses_gmol[i]/2 * vz[i] * vz[i]; // component wise contribution in kj/mol
+    }
+    return Ekin;
+}
 
-// void System::initialize_random_positions(Parameters params){
-// 	for (auto& p : particles){
-// 		p.x = drand48() *  params.pbc_L_nm - 0.5 * params.pbc_L_nm;
-// 		p.y = drand48() *  params.pbc_L_nm - 0.5 * params.pbc_L_nm;
-// 		p.z = drand48() *  params.pbc_L_nm - 0.5 * params.pbc_L_nm;
-// 	}
-// }
+// // LJ potential contribution for one pair in kj/mol
+double System::lj_pair_potential(double dr_squared, int id1, int id2){
+	double sqr_sigma { pair_sigma_nm[id1*N + id2] * pair_sigma_nm[id1*N + id2]};
+	return pair_epsilon_kjmol[id1*N + id2]+ 4 * pair_epsilon_kjmol[id1*N + id2] * (std::pow(sqr_sigma / dr_squared, 6) - std::pow(sqr_sigma / dr_squared, 3));
+}
 
-// void System::initialize_positions_sc(Parameters params){
-// 	std::cout << "Starting position initializion \n"; 
-// 	int N_direction { static_cast<int>(std::ceil(std::cbrt(params.N))) };
-// 	double dr { params.pbc_L_nm / N_direction };
-// 	int count { 0 };
-// 	for (int i=0; i<N_direction; ++i){
-// 		for (int j=0; j<N_direction; ++j){
-// 			for (int k=0; k<N_direction; ++k){
-// 				if (count == params.N){
-// 					return;
-// 				}
-// 				particles[count].x = i * dr;
-// 				particles[count].y = j * dr;
-// 				particles[count].z = k * dr;
-// 				count += 1;
-// 			}
-// 		}
-// 	}
-// }
+// total potential energy in kj/mol
+double System::get_total_lj_potential(){
+	double dr_squared {};
+	double dx {};
+	double dy {};
+	double dz {};
+	double U { 0 };
+	for (int i=0; i<N; ++i){
+		for (int j=i+1; j<N; ++j){
+			dx = minimum_image_distance(x[j] - x[i], box_size[0]);
+			dy = minimum_image_distance(y[j] - y[i], box_size[1]);
+			dz = minimum_image_distance(z[j] - z[i], box_size[2]);
+			dr_squared = dx * dx + dy * dy + dz * dz;
+			U += lj_pair_potential(dr_squared, i, j);
+		}
+	}
+	return U;
+}
 
-// void System::initialize_constant_velocity(){
-// 	std::cout << "Initialize constant velocity \n";
-// 	for (auto& p : particles){
-// 		p.vx = 1;
-// 	}
-// 	return;
-// }
+double System::get_total_energy(){
+    return get_kinetic_energy() + get_total_lj_potential();
+}
 
-// void System::initialize_rand_velocity(){
-// 	std::cout << "Initialize random velocity \n";
-// 	float vrange { 1e-3 };
-// 	for (auto& p : particles){
-// 		p.vx =drand48() *  vrange - 0.5 * vrange;
-// 	}
-// 	return;
-// }
+double System::get_temp(){
+	return 2.0 * get_kinetic_energy() / (deg_of_freedom * PhysicalConstants::K_B);
+}
 
-// void System::initialize_two_particles(Parameters params){
-// 	particles[0].x = 0;
-// 	particles[0].y = 0;
-// 	particles[0].z = 0;
+double System::get_square_distance(int i, int j){
+    double dx {minimum_image_distance(x[j] - x[i], box_size[0])};
+    double dy {minimum_image_distance(y[j] - y[i], box_size[1])};
+    double dz {minimum_image_distance(z[j] - z[i], box_size[2])};
+    return dx * dx + dy * dy + dz * dz;
+}
 
-// 	particles[1].x = params.init_dist;
-// 	particles[1].y = 0;
-// 	particles[1].z = 0;
-// }
+void System::update_verlet(){
+	for (int i=0; i<N; i++){
+		verlet_list[i].clear();
+		for (int j = 0; j < N; j++){
+			if (i == j){
+				continue;
+			}
+			if (get_square_distance(i,j) < std::pow(verlet_cutoff_nm, 2)){
+				verlet_list[i].push_back(j);
+			}
+		}
+	}
+	for (int i=0; i<N; i++){
+                  x_at_verlet[i] = x[i];
+                  y_at_verlet[i] = y[i];
+                  z_at_verlet[i] = z[i];
+	}
+}
 
-// double System::get_temp(){
-// 	return 2.0 * get_ekin() / (deg_of_freedom * PhysicalConstants::K_B);
-// }
+bool System::verlet_update_required(){
+    double max_disp2 {0};
+	for (int i=0; i<N; i++){
+        double dx {minimum_image_distance(x_at_verlet[i] - x[i], box_size[0])};
+        double dy {minimum_image_distance(y_at_verlet[i] - y[i], box_size[1])};
+        double dz {minimum_image_distance(z_at_verlet[i] - z[i], box_size[2])};
+        max_disp2 = std::max(max_disp2, dx*dx + dy*dy + dz*dz);
+    }
+    return (max_disp2 > 0.25 * verlet_skin_nm * verlet_skin_nm);
+}
+
 
 // double System::get_ekin(){
 // 	double ekin = {0.0};
@@ -379,34 +448,5 @@ void System::run_simulation(JobParameters params){
 // 	}
 // }
 
-// bool System::verlet_update_required(){
-// 	double square_verlet_skin {std::pow(std::sqrt(square_verlet_cutoff) - std::sqrt(square_lj_cutoff), 2)};
-// 	for (int i=0; i<N; i++){
-// 		if (particles[i].get_square_dist(particles_at_verlet[i], box_size) > square_verlet_skin/4){
-// 			return true;
-// 		}
-// 	}
-// 	return false;
-// }
 
-// void System::update_verlet(){
-// 	if (verlet_update_required()){
-// 		for (int i=0; i<N; i++){
-// 			particles[i].verlet_list.clear();
-// 			for (int j = 0; j < N; j++){
-// 				if (i == j){
-// 					continue;
-// 				}
-// 				if (particles[i].get_square_dist(particles[j], box_size) < square_verlet_cutoff){
-// 					particles[i].verlet_list.push_back(j);
-// 				}
-// 			}
-// 		}
-// 		for (int i=0; i<N; i++){
-// 		            particles_at_verlet[i].x = particles[i].x;
-// 		            particles_at_verlet[i].y = particles[i].y;
-// 		            particles_at_verlet[i].z = particles[i].z;
-// 		}
-// 	}
-// }
 

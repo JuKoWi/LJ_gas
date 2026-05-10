@@ -30,8 +30,8 @@ void System::write_lammpsdump_frame(std::ofstream& fout, int step_count){
 	}
 }
 
-// void write_frame_diagnostics(std::ofstream& fout, double time, double Ekin, double Epot, double T_K){
-// 	fout << time << " " << Ekin << " " << Epot << " " << Ekin + Epot << " " << T_K << '\n';
-// }
+void System::write_frame_diagnostics(std::ofstream& fout, double time, double Ekin, double Epot, double T_K){
+	fout << time << " " << Ekin << " " << Epot << " " << Ekin + Epot << " " << T_K << '\n';
+}
 
 #endif

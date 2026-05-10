@@ -4,10 +4,7 @@
     - nested neighbor list
     - bonds as list of bond pairs, same for dihedrals
     - charges full pairs, later ewald
-- parsing: 
-    - read job, initialize system with job parameters
-    - create atom type list (vector)
-    - directly create system from geom.json and atom types
+- check equilibrium distance
 
 - calculate pressure
 - solve two body problem with LJ-potential analytically

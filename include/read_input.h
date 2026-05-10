@@ -39,6 +39,7 @@ struct JobParameters{
 	int write_steps {};
 	std::string outfile_traj_lammps {};
 	std::string outfile_opt_xyz {};
+	std::string outfile_energy {};
 	std::string infile_geom_json {};
 	std::string ff_dir {};
 	std::string ensemble_type {};

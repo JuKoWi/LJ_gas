@@ -26,8 +26,9 @@ JobParameters parse_job(const std::string& filename){
 	job.n_steps = data["n_steps"];
 	job.T_K = data["T_K"];
 	job.write_steps = data["write_interval"];
-	job.outfile_traj_lammps = data["paths"]["output"].get<std::string>();
-	job.outfile_opt_xyz = data["paths"]["opt_out"].get<std::string>();
+	job.outfile_traj_lammps = data["paths"]["out_traj"].get<std::string>();
+	job.outfile_opt_xyz = data["paths"]["out_opt"].get<std::string>();
+	job.outfile_energy = data["paths"]["out_energy"].get<std::string>();
 	job.infile_geom_json = data["paths"]["geom_json"].get<std::string>();
 	job.ff_dir = data["paths"]["ff_dir"].get<std::string>();
 	
