@@ -136,7 +136,7 @@ std::unordered_map<std::string, AtomType> parse_atom_types(const std::vector<std
 	for (auto f: file_list){
 		std::ifstream file(f);
 		if (!file){
-			throw std::runtime_error("Cannot open force field file!");
+			throw std::runtime_error("Cannot open force field file");
 		}
 		json data;
 		file >> data;
@@ -154,4 +154,58 @@ std::unordered_map<std::string, AtomType> parse_atom_types(const std::vector<std
 		}
 	}
 	return types;
+}
+
+std::string make_bond_key(std::string string_a, std::string string_b){
+	if (string_a < string_b){
+		return string_a + ":" + string_b;
+	}
+	else {
+		return string_b + ":" + string_a;
+	}
+}
+
+std::vector<BondType> parse_bond_types(const std::vector<std::string>& file_list, const std::unordered_map<std::string, AtomType>& atom_types){
+	std::vector<BondType> bond_types; 
+	for (auto f: file_list){
+		std::ifstream file(f);
+		if (!file){
+			throw std::runtime_error("Cannot open force field file");
+		}
+		json data;
+		file >> data;
+		for (auto bond_type: data["bonds"]){
+			BondType bond {};
+			bond.r0 = bond_type["r0"];
+			bond.k = bond_type["k"];
+			bond.name = make_bond_key(bond_type["atoms"].at(0), bond_type["atoms"].at(1));
+			for (auto atom: bond_type["atoms"]){
+				if (!atom_types.contains(atom)){
+					throw std::runtime_error("Bonds make use of undefined atom type");
+				}
+			}
+			if (!bondtype_exists(bond_types, bond.name)){
+				bond_types.push_back(bond);
+			}
+		}
+	}
+	return bond_types;
+}
+
+bool bondtype_exists(std::vector<BondType> bond_types, std::string name_of_type){
+	for (auto b: bond_types){
+		if (b.name == name_of_type){
+			return true;
+		}
+	}
+	return false;
+}
+
+int get_type_idx(std::vector<BondType> bond_types, std::string name_of_type){
+	for (size_t i=0; i<bond_types.size(); ++i){
+		if (bond_types[i].name == name_of_type){
+			return static_cast<int>(i);
+		}
+	}
+	return -1;
 }

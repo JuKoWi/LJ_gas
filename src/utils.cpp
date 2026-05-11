@@ -26,7 +26,7 @@ void System::write_lammpsdump_frame(std::ofstream& fout, int step_count){
 	fout << -box_size[2]/2 << " " << box_size[2]/2 << '\n';
 	fout << "ITEM: ATOMS id type x y z \n";
 	for (int i=0; i<N; i++){
-		fout << i+1 << " " << "1" << " " << x[i] << " " << y[i] << " " << z[i] << '\n';
+		fout << i+1 << " " << atom_type_dict[atom_types[i]].element << " " << x[i] << " " << y[i] << " " << z[i] << '\n';
 	}
 }
 

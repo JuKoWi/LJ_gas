@@ -18,17 +18,15 @@ int main(){
 	JobParameters job_params = parse_job("config.json"); 
 	std::vector<std::string> forcefield_files = get_forcefield_files(job_params.ff_dir);
 	std::unordered_map<std::string, AtomType> atom_types = parse_atom_types(forcefield_files);
+	std::vector<BondType> bond_types = parse_bond_types(forcefield_files, atom_types);
 
 	for (auto [key, type]: atom_types){
 		type.print();
 	}
 
 	System system {};
-	system.initialize_atoms(job_params.infile_geom_json, atom_types);
-	std::cout << "Initialized System" << std::endl;
-	// if (params.optimization == 1){
-	// 	energy_opt(system, params);
-	// }
+	system.initialize(job_params, atom_types, bond_types);
+
 	auto start_md { std::chrono::high_resolution_clock::now() };
 	system.run_simulation(job_params);
 	auto end_md {std::chrono::high_resolution_clock::now() };

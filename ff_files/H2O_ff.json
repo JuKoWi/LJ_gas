@@ -35,6 +35,19 @@
 			"sigma": 0.04,
 			"epsilon": 0.192 
 		}
+	},
+	"bonds":{
+		"TIP3P-OH":{
+			"atoms": ["H-TIP3P", "O-TIP3P"],
+			"k": 188280,
+			"r0": 0.09572
+		}
+	},
+	"dihedrals":{
+		"TIP3P-HOH":{
+			"atoms": ["H-TIP3P", "O-TIP3P", "H-TIP3P"],
+			"theta": 104.52,
+			"k": 230.12
+		}
 	}
-
 }

@@ -50,7 +50,13 @@ JobParameters parse_job(const std::string& filename);
 Thermostat parse_thermostat(const std::string& key_thermostat);
 std::vector<std::string> get_forcefield_files(const std::string& ff_dir);
 
-struct AtomType; // why is this necessary?
+struct AtomType; // why is this necessary to declare here?
+struct BondType; // why is this necessary to declare here?
 std::unordered_map<std::string, AtomType> parse_atom_types(const std::vector<std::string>& file_list);
+
+std::string make_bond_key(std::string string_a, std::string string_b);
+std::vector<BondType> parse_bond_types(const std::vector<std::string>& file_list, const std::unordered_map<std::string, AtomType>& atom_types);
+bool bondtype_exists(std::vector<BondType> bond_types, std::string name_of_type);
+int get_type_idx(std::vector<BondType> bond_types, std::string name_of_type);
 
 #endif

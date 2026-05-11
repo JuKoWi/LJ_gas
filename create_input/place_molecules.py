@@ -8,6 +8,7 @@ AVOGADRO = 6.02214076e23
 
 def build_system(
         bond_list, 
+        # dihedrals,
         xyz_file, 
         n_molecule, 
         # density,
@@ -29,8 +30,9 @@ def build_system(
     n_atoms = len(elements)
     bonds = []
     atoms = []
-    box_size_angst = np.array([100, 100, 100])
+    box_size_angst = np.array([20, 20, 20])
     molecule_dimensions_angst, centered_coords_angst = center_molecule(coords=coords_angst)
+    print(centered_coords_angst)
 
     total_coords = np.zeros((n_molecule * n_atoms,3))
     total_elements = []
@@ -46,6 +48,12 @@ def build_system(
         random_shift = [shiftx, shifty, shiftz]
         total_coords[i*n_atoms:(i+1)*n_atoms] = shift_molecule(rotated_molecule, random_shift)
 
+        new_bonds = np.array(bond_list) + i*n_atoms
+        new_bonds = [[index + i * n_atoms for index in row] for row in bond_list]
+        [bonds.append(b) for b in new_bonds]
+
+    print(bonds)
+
     write_xyz(elements=total_elements, coords=total_coords)
 
     data = {"box": list(angstrom_to_nm(box_size_angst))}
@@ -58,11 +66,11 @@ def build_system(
                 }
         atoms.append(atom)
     data["atoms"] = atoms
+    data["bonds"] = bonds
 
     with open(f"{outfile}.json", "w", encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
     
-
 
 def load_xyz(filepath):
     with open(filepath, "r") as f:
@@ -73,7 +81,6 @@ def load_xyz(filepath):
         atoms = []
 
         for i,line in enumerate(f):
-            print(line)
             element, x, y, z = line.split()
             element = str(element)
             x = float(x)
@@ -132,17 +139,8 @@ def read_types():
     pass
 
 
-def write_json():
-    pass
-
-def create_atom():
-    pass
-
-def create_molecule():
-    pass
-
-
 
 if __name__ == "__main__":
     bond_list = [[0,1], [0,2]]
-    build_system(outfile="test", bond_list=bond_list, xyz_file="argon.xyz", n_molecule=60)
+    # bond_list = []
+    build_system(outfile="test", bond_list=bond_list, xyz_file="h2o.xyz", n_molecule=20) 

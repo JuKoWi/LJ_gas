@@ -1,6 +1,6 @@
 {
 	"n_steps" : 100000,
-	"dt" : 0.01,
+	"dt" : 0.001,
 	"paths": {
 		"out_traj": "traj.lammpstrj",
 		"out_opt": "opt.xyz",
@@ -8,14 +8,9 @@
 		"geom_json": "test.json",
 		"ff_dir" : "ff_files"
 	},
-	"epsilon" : 0.9960,
-	"sigma" : 0.3405,
-	"mass" : 40,
-	"write_interval" : 1000,
-	"T_K" : 10,
+	"write_interval" : 100,
+	"T_K" : 50,
 	"ensemble_type" : "NVT",
-	"init_pos" : "random",
-	"init_dist" : 0.01,
 	"optimization" : true,
 	"thermostat" : {
 		"is_on" : true,

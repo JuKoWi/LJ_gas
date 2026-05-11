@@ -13,6 +13,14 @@
 
 using json = nlohmann::json;
 
+void System::initialize(JobParameters job_params, std::unordered_map<std::string, AtomType> atom_types, std::vector<BondType> bond_types){
+	initialize_atoms(job_params.infile_geom_json, atom_types);
+	initialize_bonds(job_params.infile_geom_json, bond_types);
+	energy_opt(job_params.outfile_opt_xyz);
+    temperature_goal = job_params.T_K;
+	initialize_temperature(job_params.T_K);
+    update_forces();
+}
 
 void System::initialize_atoms(const std::string& geom_file, std::unordered_map<std::string, AtomType> type_dict){
     std::cout << "Initialize atom positions and connectivity \n";
@@ -74,6 +82,32 @@ void System::initialize_atoms(const std::string& geom_file, std::unordered_map<s
     assert(x.size() == fz.size());
     assert(pair_epsilon_kjmol.size() == x.size()*x.size());
     assert(pair_sigma_nm.size() == x.size()*x.size());
+
+	std::cout << "Initialized System" << std::endl;
+}
+
+
+void System::initialize_bonds(const std::string& geom_file, std::vector<BondType> types_from_file){
+    bond_types = types_from_file;
+
+	std::ifstream file(geom_file);
+	if (!file){
+		throw std::runtime_error("Cannot open geometry file!");
+	}
+	json data;
+	file >> data;
+    for (auto bond: data["bonds"]){
+        int atom_idx1 = bond[0];
+        int atom_idx2 = bond[1];
+        std::string bond_name {make_bond_key(atom_types[atom_idx1], atom_types[atom_idx2])};
+        if (!bondtype_exists(types_from_file, bond_name)){
+            throw std::runtime_error("No bond parameters defined for this combination of atom types");
+        }
+        bonds.i.push_back(atom_idx1);
+        bonds.j.push_back(atom_idx2);
+        bonds.type.push_back(get_type_idx(types_from_file, bond_name));
+    }
+    
 }
 
 void System::set_lj_pairs(){
@@ -88,7 +122,6 @@ void System::set_lj_pairs(){
 }
 
 void System::do_verlet_step(double dt){
-    update_forces();
     for (int i=0; i<N; i++){
         vx[i] += 0.5 * fx[i] / masses_gmol[i] * dt;
         vy[i] += 0.5 * fy[i] / masses_gmol[i] * dt;
@@ -109,6 +142,18 @@ void System::do_verlet_step(double dt){
 
 void System::do_simulation_step(double dt){ // step_count as additional argument
     do_verlet_step(dt);
+    apply_vrescale(temperature_goal);
+}
+
+// distance components while considering PBC
+double minimum_image_distance(double dx, double L){
+	if (dx > 0.5 * L){
+		dx -= L;
+	}
+	if (dx < -0.5 * L){
+		dx += L;
+	}
+	return dx;
 }
 
 void System::update_forces(){
@@ -117,6 +162,7 @@ void System::update_forces(){
     std::fill(fz.begin(), fz.end(), 0.0);
 
     update_lj_forces(true);
+    update_bond_forces();
 }
 
 void System::update_lj_forces(bool verlet){
@@ -134,7 +180,7 @@ void System::update_lj_forces(bool verlet){
 				double dz { minimum_image_distance(z[j] - z[i], box_size[2]) };
 
 				if (dx*dx + dy*dy + dz*dz < lj_cutoff_nm * lj_cutoff_nm){
-                    Vec3 f_lj {LJ_force(dx, dy, dz, pair_sigma_nm[i*N + j], pair_epsilon_kjmol[i*N +j])};
+                    Vec3 f_lj {lj_force(dx, dy, dz, pair_sigma_nm[i*N + j], pair_epsilon_kjmol[i*N +j])};
 				    fx[i] -= f_lj.x;
 				    fy[i] -= f_lj.y;
 				    fz[i] -= f_lj.z;
@@ -153,7 +199,7 @@ void System::update_lj_forces(bool verlet){
                 double dy {minimum_image_distance(y[j] - y[i], box_size[1])};
                 double dz {minimum_image_distance(z[j] - z[i], box_size[2])};
                 if (dx*dx + dy*dy + dz*dz < std::pow(lj_cutoff_nm, 2)){
-                    Vec3 f_lj {LJ_force(dx, dy, dz, pair_sigma_nm[i*N + j], pair_epsilon_kjmol[i*N +j])};
+                    Vec3 f_lj {lj_force(dx, dy, dz, pair_sigma_nm[i*N + j], pair_epsilon_kjmol[i*N +j])};
 				    fx[i] -= f_lj.x;
 				    fy[i] -= f_lj.y;
 				    fz[i] -= f_lj.z;
@@ -167,23 +213,43 @@ void System::update_lj_forces(bool verlet){
     }
 }
 
-// // distance components while considering PBC
-double minimum_image_distance(double dx, double L){
-	if (dx > 0.5 * L){
-		dx -= L;
-	}
-	if (dx < -0.5 * L){
-		dx += L;
-	}
-	return dx;
+void System::update_bond_forces(){
+    for (size_t idx=0; idx<bonds.i.size(); ++idx){
+        double dx {minimum_image_distance(x[bonds.j[idx]] - x[bonds.i[idx]], box_size[0])};
+        double dy {minimum_image_distance(y[bonds.j[idx]] - y[bonds.i[idx]], box_size[1])};
+        double dz {minimum_image_distance(z[bonds.j[idx]] - z[bonds.i[idx]], box_size[2])};
+        Vec3 f_bond {bond_force(dx, dy, dz,
+            bond_types[bonds.type[idx]].r0,
+            bond_types[bonds.type[idx]].k)
+        };
+        fx[bonds.i[idx]] += f_bond.x;
+        fy[bonds.i[idx]] += f_bond.y;
+        fz[bonds.i[idx]] += f_bond.z;
+
+        fx[bonds.j[idx]] -= f_bond.x;
+        fy[bonds.j[idx]] -= f_bond.y;
+        fz[bonds.j[idx]] -= f_bond.z;
+    }
 }
 
+inline Vec3 bond_force(double dx, double dy, double dz, double r0, double k){
+    Vec3 force {};
+    double dr {std::sqrt(dx*dx + dy*dy + dz*dz)};
+    double displacement {dr - r0};
+    double abs_val_force {k * displacement};
+    force.x = abs_val_force * dx/dr;
+    force.y = abs_val_force * dy/dr;
+    force.z = abs_val_force * dz/dr;
+    return force;
+}
+
+
 // Return components of LJ-force between two particles
-inline Vec3 LJ_force(double dx, double dy, double dz, double sigma, double epsilon) {
+inline Vec3 lj_force(double dx, double dy, double dz, double sigma, double epsilon) {
     double r2 {dx*dx + dy*dy + dz*dz};
     Vec3 f_vec {};
-    if (r2 < 1e-10){
-        r2 = 1e-10;
+    if (r2 < 1e-6){
+        r2 = 1e-6;
     } 
 	double r {std::sqrt(r2)};
 
@@ -220,7 +286,7 @@ void System::run_simulation(JobParameters params){
             write_frame_diagnostics(fout_energy, 
                 i * params.dt, 
                 get_kinetic_energy(), 
-                get_total_lj_potential(), 
+                get_total_potential(), 
                 get_temp());
 			// write_xyz_frame(fout_traj, system);
 		}
@@ -243,6 +309,10 @@ double System::lj_pair_potential(double dr_squared, int id1, int id2){
 	return pair_epsilon_kjmol[id1*N + id2]+ 4 * pair_epsilon_kjmol[id1*N + id2] * (std::pow(sqr_sigma / dr_squared, 6) - std::pow(sqr_sigma / dr_squared, 3));
 }
 
+double System::bond_pair_potential(double dr, double r0, double k){
+    return k/2 * (dr - r0) * (dr - r0);
+}
+
 // total potential energy in kj/mol
 double System::get_total_lj_potential(){
 	double dr_squared {};
@@ -262,8 +332,28 @@ double System::get_total_lj_potential(){
 	return U;
 }
 
+double System::get_total_bond_potential(){
+    double U {};
+    double dx {};
+    double dy {};
+    double dz {};
+    double dr {};
+    for (size_t idx=0; idx<bonds.i.size(); ++idx){
+        dx = minimum_image_distance(x[bonds.j[idx]] - x[bonds.i[idx]], box_size[0]);
+        dy = minimum_image_distance(y[bonds.j[idx]] - y[bonds.i[idx]], box_size[1]);
+        dz = minimum_image_distance(z[bonds.j[idx]] - z[bonds.i[idx]], box_size[2]);
+        dr = std::sqrt(dx*dx + dy*dy + dz*dz);
+        U += bond_pair_potential(dr, bond_types[bonds.type[idx]].r0, bond_types[bonds.type[idx]].k);
+    }
+    return U;
+}
+
 double System::get_total_energy(){
-    return get_kinetic_energy() + get_total_lj_potential();
+    return get_kinetic_energy() + get_total_potential();
+}
+
+double System::get_total_potential(){
+    return get_total_lj_potential() + get_total_bond_potential();
 }
 
 double System::get_temp(){
@@ -307,67 +397,126 @@ bool System::verlet_update_required(){
     return (max_disp2 > 0.25 * verlet_skin_nm * verlet_skin_nm);
 }
 
+// steepest descend energy optimization
+void System::energy_opt(std::string opt_out){
+    std::cout << "Start energy optimization " << '\n';
+    std::ofstream fout(opt_out);
 
-// double System::get_ekin(){
-// 	double ekin = {0.0};
-// 	for (const auto& p: particles){
-// 		ekin += 0.5 * p.mass * (p.vx * p.vx + p.vy * p.vy + p.vz * p.vz);
-// 	}
-// 	return ekin;
-// }
+    double max_epsilon_kjmol {0};
+    for (int i=0; i<N; ++i){
+        max_epsilon_kjmol = std::max(max_epsilon_kjmol, epsilon_kjmol[i]);
+    }
+	double threshold { 1e-7 * max_epsilon_kjmol * N };
 
-// // get center-of-mass momentum in g * nm/(mol * ps)
-// std::vector<double> System::get_cm_momentum(){
-// 	double cm_momentum_x {0.0} ;
-// 	double cm_momentum_y {0.0} ;
-// 	double cm_momentum_z {0.0} ;
-// 	for (const auto& p: particles){
-// 		cm_momentum_x += p.mass * p.vx;
-// 		cm_momentum_y += p.mass * p.vy;
-// 		cm_momentum_z += p.mass * p.vz;
-// 	}
-// 	return {cm_momentum_x, cm_momentum_y, cm_momentum_z};
-// }
+	double total_force_sqr { 0 };
+	double eta { 1 };
+	double maxstep { 0.01 }; //nm
+	int max_rep { 1000 };
+	write_xyz_frame(fout);
+	double Epot_before {};
+	double Epot_after {};
 
-// void System::initialize_temperature(double T_K){
-// 	std::random_device rd;
-// 	std::mt19937 gen(rd());
+	for (int i=0; i<max_rep; ++i){
+		total_force_sqr = 0;
+		update_forces();
+        for (int i=0; i<N; ++i){
+            total_force_sqr += fx[i] * fx[i];
+            total_force_sqr += fy[i] * fy[i];
+            total_force_sqr += fz[i] * fz[i];
+        }
+		if (i % 100 == 0){
+			std::cout << "Iteration: " << i << " Total force: " << total_force_sqr << '\n';
+		}
+		if (total_force_sqr < threshold){
+			std::cout << "Minimized energy below force-threshold \n";
+			fout.close();
+			return;
+		}
 
-// 	for (auto& p: particles){
-// 		double std_deviation = std::sqrt(PhysicalConstants::K_B * T_K / p.mass);
-// 		std::normal_distribution dist(0.0, std_deviation);
-// 		p.vx = dist(gen);
-// 		p.vy = dist(gen);
-// 		p.vz = dist(gen);
-// 	}
+		Epot_before = get_total_potential();
+        for (int i=0; i<N; ++i){
+            double dx {eta * fx[i]};
+            x[i] += (std::abs(dx) < maxstep) ? dx : std::copysign(maxstep, dx);
+            double dy {eta * fy[i]};
+            y[i] += (std::abs(dy) < maxstep) ? dy : std::copysign(maxstep, dy);
+            double dz {eta * fz[i]};
+            z[i] += (std::abs(dz) < maxstep) ? dz : std::copysign(maxstep, dz);
+        }
+		update_positions();
+		write_xyz_frame(fout);
+		Epot_after = get_total_potential();
+		if (Epot_after > Epot_before){
+			eta *= 0.5;
+		}
+		else{
+			eta *= 1.1;
+		}
+	}
+	fout.close();
+	std::cout << "Stopped energy minimization after 1000 iterations \n";
+}
 
-// }
+void System::initialize_temperature(double T_K){
+	std::random_device rd;
+	std::mt19937 gen(rd());
 
-// void System::apply_vrescale(double T_K){
-// 	if (T_K == 0){
-// 		for (auto& p: particles){
-// 			p.vx = 0.0;
-// 			p.vy = 0.0;
-// 			p.vz = 0.0;
-// 		}
-// 	}
-// 	else{
-// 		double scaling_factor { std::sqrt(T_K / get_temp()) };
-// 		for (auto& p: particles){
-// 			p.vx *= scaling_factor;
-// 			p.vy *= scaling_factor;
-// 			p.vz *= scaling_factor;
-// 		}
-// 	}
-// }
+    for (int i=0; i<N; ++i){
+        double std_deviation = std::sqrt(PhysicalConstants::K_B * T_K / masses_gmol[i]);
+        std::normal_distribution<double> dist(0.0, std_deviation);
+        vx[i] = dist(gen);
+        vy[i] = dist(gen);
+        vz[i] = dist(gen);
+    }
+
+    //remove drift
+    Vec3 com_momentum {get_cm_momentum()};
+    double total_mass {};
+    for (int i=0; i<N; ++i){
+        total_mass += masses_gmol[i];
+    }
+    double v_com_x = com_momentum.x/total_mass;
+    double v_com_y = com_momentum.y/total_mass;
+    double v_com_z = com_momentum.z/total_mass;
+    for (int i=0; i<N; ++i){
+        vx[i] -= v_com_x;
+        vy[i] -= v_com_y;
+        vz[i] -= v_com_z;
+    }
+    apply_vrescale(T_K);
+}
+
+void System::apply_vrescale(double T_K){
+	if (T_K == 0){
+        for (int i=0; i<N; ++i){
+            vx[i] = 0.0;
+            vy[i] = 0.0;
+            vz[i] = 0.0;
+        }
+	}
+	else{
+		double scaling_factor { std::sqrt(T_K / get_temp()) };
+        for (int i=0; i<N; ++i){
+            vx[i] *= scaling_factor;
+            vy[i] *= scaling_factor;
+            vz[i] *= scaling_factor;
+        }
+	}
+}
+
+// get center-of-mass momentum in g * nm/(mol * ps)
+Vec3 System::get_cm_momentum(){
+    Vec3 com_momentum {};
+	for (int i=0; i<N; ++i){
+		com_momentum.x += masses_gmol[i] * vx[i];
+		com_momentum.y += masses_gmol[i] * vy[i];
+		com_momentum.z += masses_gmol[i] * vz[i];
+	}
+	return com_momentum;
+}
+
 
 // // double System::get_pressure(){
 // // 	double V {std::pow(box_size, 3)};
-	
-// // }
-
-// // void System::do_simulation_step(){
-
 // // }
 
 // void System::initialize(const Parameters& params){
@@ -398,55 +547,3 @@ bool System::verlet_update_required(){
 
 
 // }
-
-// // Overall initialization to set up simulation
-// void System::initialize(const Parameters& params){
-// 	box_size = params.pbc_L_nm;
-// 	temperature = params.T_K;
-// 	particles.resize(params.N);
-// 	particles_at_verlet.resize(params.N);
-// 	N = params.N;
-// 	deg_of_freedom = 3 * N - 3 ;
-// 	lj_sigma = params.sigma;
-// 	square_lj_cutoff = params.sigma * params.sigma * std::pow(3,2);
-// 	square_verlet_cutoff = params.sigma* params.sigma * std::pow(3 + 0.5, 2);
-	
-
-
-// 	for (auto& p: particles){
-// 		p.mass = params.mass_au;
-// 	}
-	
-// 	// initialize positions
-// 	if (params.init_pos == "random"){
-// 		initialize_random_positions(params);
-// 	}
-// 	else if (params.init_pos == "sc"){
-// 		initialize_positions_sc(params);
-// 	}
-// 	else if (params.init_pos == "two"){
-// 		if (params.N == 2){
-// 			initialize_two_particles(params);
-// 		}
-// 		else{
-// 			throw std::runtime_error("Wrong number of particles for this type of initial position");
-// 		}
-// 	}
-// 	else {
-// 		std::runtime_error("Undefined keyword for init_pos keyword");
-// 	}
-
-// 	// initialize velocities
-// 	if (params.T_K > 0){
-// 		initialize_temperature(params.T_K);
-// 	}
-
-// 	for (int i=0; i< N; i++){
-// 		particles_at_verlet[i].x = particles[i].x;	
-// 		particles_at_verlet[i].y = particles[i].y;	
-// 		particles_at_verlet[i].z = particles[i].z;	
-// 	}
-// }
-
-
-

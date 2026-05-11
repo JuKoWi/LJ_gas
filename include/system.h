@@ -7,6 +7,24 @@
 struct System;
 struct JobParameters;
 
+struct Bonds{
+	std::vector<int> i {};
+	std::vector<int> j {};
+	std::vector<int> type {};
+};
+
+struct BondType{
+	std::string name {};
+	double r0 {};
+	double k {};
+
+	void print(){
+		std::cout << "BONDTYPE: " << name << '\n';
+		std::cout << "\tr0: " << r0 << '\n';
+		std::cout << "\tk: " << k << '\n';
+	}
+};
+
 struct Vec3{
 	double x {};
 	double y {};
@@ -33,7 +51,7 @@ struct AtomType{
 // hold all instantaneous information (particles, box size, temp,...)
 struct System{
 	std::vector<double> box_size {};
-	double temperature {};
+	double temperature_goal {};
 	int N {};
 	int deg_of_freedom {};
 	double lj_cutoff_nm {};
@@ -66,17 +84,22 @@ struct System{
 	std::unordered_map<std::string, AtomType> atom_type_dict {};
 	std::vector<std::string> atom_types {};
 
-
+	std::vector<BondType> bond_types {};
+	Bonds bonds {};
 
 	// Steps during initialization
-	void initialize_atoms(const std::string& geom_file, std::unordered_map<std::string, AtomType> type_list);
+	void initialize(JobParameters job_params, std::unordered_map<std::string, AtomType> atom_types, std::vector<BondType> bond_types);
+	void initialize_atoms(const std::string& geom_file, std::unordered_map<std::string, AtomType> type_dict);
+	void initialize_bonds(const std::string& geom_file, std::vector<BondType> bond_types);
 	void set_lj_pairs();
-	// void initialize_temperature(double T_K);
-	// void initialize(const Parameters& params);
+	void initialize_temperature(double T_K);
+	void energy_opt(std::string opt_out);
 
+	//main loop
 	void do_verlet_step(double dt);
 	void update_forces();
 	void update_lj_forces(bool verlet);
+	void update_bond_forces();
 	void update_positions();
 
 	// do all actions required in one simulation step
@@ -88,15 +111,18 @@ struct System{
 
 	//get thermodynamics
 	double get_temp();
-	// std::vector<double> get_cm_momentum();
+	Vec3 get_cm_momentum();
 	// double get_pressure();
 	double get_kinetic_energy();
 	double lj_pair_potential(double dr_sqare, int id1, int id2);
+	double bond_pair_potential(double dr, double r0, double k);
 	double get_total_lj_potential();
+	double get_total_bond_potential();
+	double get_total_potential();
 	double get_total_energy();
 
 	//thermostats
-	// void apply_vrescale(double T_K);
+	void apply_vrescale(double T_K);
 
 
 	//write configuration to file
@@ -107,6 +133,7 @@ struct System{
 };
 
 double minimum_image_distance(double dx, double L);
-inline Vec3 LJ_force(double dx, double dy, double dz, double sigma, double epsilon);
+inline Vec3 lj_force(double dx, double dy, double dz, double sigma, double epsilon);
+inline Vec3 bond_force(double dx, double dy, double dz, double r0, double k);
 
 #endif
