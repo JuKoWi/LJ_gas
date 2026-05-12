@@ -1,5 +1,6 @@
 #include <vector>
 #include <iostream>
+#include <numbers>
 #include <cmath>
 #include <string>
 #include <fstream>
@@ -13,9 +14,10 @@
 
 using json = nlohmann::json;
 
-void System::initialize(JobParameters job_params, std::unordered_map<std::string, AtomType> atom_types, std::vector<BondType> bond_types){
+void System::initialize(JobParameters job_params, std::unordered_map<std::string, AtomType> atom_types, std::vector<BondType> bond_types, std::vector<AngleType> angle_types){
 	initialize_atoms(job_params.infile_geom_json, atom_types);
 	initialize_bonds(job_params.infile_geom_json, bond_types);
+    initialize_angles(job_params.infile_geom_json, angle_types);
 	energy_opt(job_params.outfile_opt_xyz);
     temperature_goal = job_params.T_K;
 	initialize_temperature(job_params.T_K);
@@ -100,7 +102,7 @@ void System::initialize_bonds(const std::string& geom_file, std::vector<BondType
         int atom_idx1 = bond[0];
         int atom_idx2 = bond[1];
         std::string bond_name {make_bond_key(atom_types[atom_idx1], atom_types[atom_idx2])};
-        if (!bondtype_exists(types_from_file, bond_name)){
+        if (!type_exists(types_from_file, bond_name)){
             throw std::runtime_error("No bond parameters defined for this combination of atom types");
         }
         bonds.i.push_back(atom_idx1);
@@ -108,6 +110,33 @@ void System::initialize_bonds(const std::string& geom_file, std::vector<BondType
         bonds.type.push_back(get_type_idx(types_from_file, bond_name));
     }
     
+}
+
+void System::initialize_angles(const std::string& geom_file, std::vector<AngleType> types_from_file){
+    angle_types = types_from_file;
+
+    std::ifstream file(geom_file);
+	if (!file){
+		throw std::runtime_error("Cannot open geometry file!");
+	}
+    json data;
+    file >> data;
+    for (auto angle: data["angles"]){
+        int atom_idx1 = angle[0];
+        int atom_idx2 = angle[1];
+        int atom_idx3 = angle[2];
+        std::string angle_name {make_angle_key(atom_types[atom_idx1], atom_types[atom_idx2], atom_types[atom_idx3])};
+        if (!type_exists(types_from_file, angle_name)){
+            throw std::runtime_error("No angle parameters defined for this combination of atom types");
+        }
+        angles.i.push_back(atom_idx1);
+        angles.j.push_back(atom_idx2);
+        angles.k.push_back(atom_idx3);
+        angles.type.push_back(get_type_idx(types_from_file, angle_name));
+    }
+    assert(angles.i.size() == angles.j.size());
+    assert(angles.j.size() == angles.k.size());
+    assert(angles.k.size() == angles.type.size());
 }
 
 void System::set_lj_pairs(){
@@ -163,6 +192,7 @@ void System::update_forces(){
 
     update_lj_forces(true);
     update_bond_forces();
+    update_angle_forces();
 }
 
 void System::update_lj_forces(bool verlet){
@@ -232,11 +262,68 @@ void System::update_bond_forces(){
     }
 }
 
+void System::update_angle_forces(){
+    Vec3 a {};
+    Vec3 b {};
+    double theta_deg {};
+    double force_value {};
+    Vec3 a_orth {};
+    Vec3 b_orth {};
+    for (size_t idx=0; idx<angles.i.size(); ++idx){
+        a.x = minimum_image_distance(x[angles.i[idx]] - x[angles.j[idx]], box_size[1]);
+        a.y = minimum_image_distance(y[angles.i[idx]] - y[angles.j[idx]], box_size[1]);
+        a.z = minimum_image_distance(z[angles.i[idx]] - z[angles.j[idx]], box_size[2]);
+        b.x = minimum_image_distance(x[angles.k[idx]] - x[angles.j[idx]], box_size[0]);
+        b.y = minimum_image_distance(y[angles.k[idx]] - y[angles.j[idx]], box_size[1]);
+        b.z = minimum_image_distance(z[angles.k[idx]] - z[angles.j[idx]], box_size[2]);
+        theta_deg = angle(a, b);
+        force_value = angle_force(theta_deg, angle_types[angles.type[idx]].theta0_deg, angle_types[angles.type[idx]].k);
+        a_orth = orth_component_unit(a,b); //component of a orthogonal to b
+        b_orth = orth_component_unit(b,a);
+        fx[angles.i[idx]] += b_orth.x * force_value;
+        fy[angles.i[idx]] += b_orth.y * force_value;
+        fz[angles.i[idx]] += b_orth.z * force_value;
+
+        fx[angles.k[idx]] += a_orth.x * force_value;
+        fy[angles.k[idx]] += a_orth.y * force_value;
+        fz[angles.k[idx]] += a_orth.z * force_value;
+    }
+}
+
+inline double angle(Vec3 a, Vec3 b){
+    return rad_to_deg(std::acos(dot(a, b)/(std::sqrt(dot(a,a)) * std::sqrt(dot(b,b)))));
+}
+
+inline double dot(Vec3 a, Vec3 b){
+    return a.x*b.x + a.y*b.y + a.z*b.z;
+}
+
+inline double rad_to_deg(double rad){
+    return rad * 180/std::numbers::pi;
+}
+
+inline double angle_force(double theta_deg, double theta0, double k){
+    return 2 * k * (theta_deg - theta0);
+}
+
+//orthogonal component of a w.r.t b, normalized
+inline Vec3 orth_component_unit(Vec3 a, Vec3 b){
+    Vec3 a_orth {};
+    a_orth.x = a.x - b.x * dot(a, b) / dot(b,b);
+    a_orth.y = a.y - b.y * dot(a, b) / dot(b,b);
+    a_orth.z = a.z - b.z * dot(a, b) / dot(b,b);
+    double a_orth_norm {std::sqrt(a_orth.x*a_orth.x + a_orth.y*a_orth.y + a_orth.z*a_orth.z)}; 
+    a_orth.x /= a_orth_norm;
+    a_orth.y /= a_orth_norm;
+    a_orth.z /= a_orth_norm;
+    return a_orth;
+}
+
 inline Vec3 bond_force(double dx, double dy, double dz, double r0, double k){
     Vec3 force {};
     double dr {std::sqrt(dx*dx + dy*dy + dz*dz)};
     double displacement {dr - r0};
-    double abs_val_force {k * displacement};
+    double abs_val_force {2 * k * displacement};
     force.x = abs_val_force * dx/dr;
     force.y = abs_val_force * dy/dr;
     force.z = abs_val_force * dz/dr;
@@ -310,7 +397,7 @@ double System::lj_pair_potential(double dr_squared, int id1, int id2){
 }
 
 double System::bond_pair_potential(double dr, double r0, double k){
-    return k/2 * (dr - r0) * (dr - r0);
+    return k * (dr - r0) * (dr - r0);
 }
 
 // total potential energy in kj/mol

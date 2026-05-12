@@ -34,6 +34,20 @@
 			"mass": 1.0,
 			"sigma": 0.04,
 			"epsilon": 0.192 
+		},
+		"H-alkane": {
+			"element": "H",
+			"charge": 0.417,
+			"mass": 1.0,
+			"sigma": 0.04,
+			"epsilon": 0.192 
+		},
+		"C-sp3":{
+			"element": "C",
+			"charge": 0.417,
+			"mass": 1.0,
+			"sigma": 0.04,
+			"epsilon": 0.192 
 		}
 	},
 	"bonds":{
@@ -43,11 +57,17 @@
 			"r0": 0.09572
 		}
 	},
-	"dihedrals":{
+	"angles":{
 		"TIP3P-HOH":{
 			"atoms": ["H-TIP3P", "O-TIP3P", "H-TIP3P"],
 			"theta": 104.52,
 			"k": 230.12
+		},
+		"Methane-HCH":{
+			"atoms": ["H-alkane", "C-sp3", "H-alkane"],
+			"theta": 109.47,
+			"k": 200
 		}
+
 	}
 }

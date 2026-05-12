@@ -52,11 +52,32 @@ std::vector<std::string> get_forcefield_files(const std::string& ff_dir);
 
 struct AtomType; // why is this necessary to declare here?
 struct BondType; // why is this necessary to declare here?
+struct AngleType; // why is this necessary to declare here?
 std::unordered_map<std::string, AtomType> parse_atom_types(const std::vector<std::string>& file_list);
 
 std::string make_bond_key(std::string string_a, std::string string_b);
+std::string make_angle_key(std::string string_a, std::string string_b, std::string string_c);
 std::vector<BondType> parse_bond_types(const std::vector<std::string>& file_list, const std::unordered_map<std::string, AtomType>& atom_types);
-bool bondtype_exists(std::vector<BondType> bond_types, std::string name_of_type);
-int get_type_idx(std::vector<BondType> bond_types, std::string name_of_type);
+std::vector<AngleType> parse_angle_types(const std::vector<std::string>& file_list, const std::unordered_map<std::string, AtomType>& atom_types);
+
+template <typename T>
+bool type_exists(std::vector<T> types, std::string name_of_type){
+	for (auto t: types){
+		if (t.name == name_of_type){
+			return true;
+		}
+	}
+	return false;
+}
+
+template<typename T>
+int get_type_idx(const std::vector<T>& types, const std::string& name_of_type){
+	for (size_t i=0; i < types.size(); ++i){
+		if (types[i].name == name_of_type){
+			return static_cast<int>(i);
+		}
+	}
+	return -1;
+}
 
 #endif

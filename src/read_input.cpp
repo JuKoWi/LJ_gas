@@ -35,70 +35,6 @@ JobParameters parse_job(const std::string& filename){
 	return job;
 }
 
-// Parameters read_config(const std::string& filename){
-// 	std::cout << "Start reading config file \n";
-// 	std::ifstream file(filename);
-// 	if (!file){
-// 		throw std::runtime_error("Cannot open config file!");
-// 	}
-
-// 	std::unordered_map<std::string, std::string> values {};
-// 	std::string line {};
-
-// 	while (std::getline(file, line)){
-// 		if (line.empty() || line[0] == '#'){
-// 			continue;
-// 		}
-// 		std::istringstream iss(line);
-// 		std::string key {};
-// 		std::string eq {};
-// 		std::string value {};
-
-// 		iss >> key >> eq >> value;
-// 		if (eq != "="){
-// 			throw std::runtime_error("Invalid config format");
-// 		}
-// 		values[key] = value;
-// 	}
-
-// 	Parameters p {};
-// 	p.N = std::stoi(values.at("N"));
-// 	p.n_steps = std::stoi(values.at("n_steps"));
-// 	p.dt = std::stod(values.at("dt")); //ps
-// 	p.epsilon = std::stod(values.at("epsilon")); // kj/mol
-// 	p.sigma = std::stod(values.at("sigma")); // nm
-// 	p.mass_au = std::stod(values.at("mass")); // u
-// 	p.pbc_L_nm = std::stod(values.at("pbc_L")); //nm, sidelength of simulation box centered around 0
-// 	p.write_steps = std::stoi(values.at("write_steps"));
-// 	p.output = values.at("output");
-// 	p.output_opt = values.at("output_opt");
-// 	p.ensemble_type = values.at("ensemble_type");
-// 	p.init_pos = values.at("init_pos"); // way of initializing the positions
-// 	p.init_dist = std::stod(values.at("init_dist"));
-// 	p.T_K = std::stod(values.at("T_K"));
-// 	p.optimization = std::stoi(values.at("optimization"));
-
-// 	p.thermostat = parse_thermostat(values.at("thermostat"));
-
-// 	std::cout << "---------------------------------------------------------------------------\n";
-// 	std::cout << p.N << " atoms \n";
-// 	std::cout << p.n_steps << " steps\n";
-// 	std::cout << "timestep: " << p.dt << " ps \n";
-// 	std::cout << "epsilon: " << p.epsilon << '\n';
-// 	std::cout << "sigma: " << p.sigma << '\n';
-// 	std::cout << "mass: " << p.mass_au << " g/mol \n";
-// 	std::cout << "boxlength: " << p.pbc_L_nm << " nm \n";
-// 	std::cout << "writing every: " << p.write_steps << " steps \n";
-// 	std::cout << "ensemble type: " << p.ensemble_type << '\n';
-// 	std::cout << "positions initialized by scheme: " << p.init_pos << '\n';
-// 	std::cout << "initial distance between two particles: " << p.init_dist << " nm \n";
-// 	std::cout << "T: " << p.T_K << " K \n";
-// 	std::cout << "Optimization: " << p.optimization << '\n';
-// 	std::cout << "Thermostat: " << values.at("thermostat") << '\n';
-// 	std::cout << "Finished reading config \n"; 
-// 	return p;
-// }
-
 Thermostat parse_thermostat(const std::string& key_thermostat){
 	if (key_thermostat == "none"){
 		return Thermostat::None;
@@ -165,6 +101,15 @@ std::string make_bond_key(std::string string_a, std::string string_b){
 	}
 }
 
+std::string make_angle_key(std::string string_a, std::string string_b, std::string string_c){
+	if (string_a < string_c){
+		return string_a + ":" + string_b + ":" + string_c;
+	}
+	else {
+		return string_c + ":" + string_b + ":" + string_a;
+	}
+}
+
 std::vector<BondType> parse_bond_types(const std::vector<std::string>& file_list, const std::unordered_map<std::string, AtomType>& atom_types){
 	std::vector<BondType> bond_types; 
 	for (auto f: file_list){
@@ -184,7 +129,7 @@ std::vector<BondType> parse_bond_types(const std::vector<std::string>& file_list
 					throw std::runtime_error("Bonds make use of undefined atom type");
 				}
 			}
-			if (!bondtype_exists(bond_types, bond.name)){
+			if (!type_exists(bond_types, bond.name)){
 				bond_types.push_back(bond);
 			}
 		}
@@ -192,20 +137,31 @@ std::vector<BondType> parse_bond_types(const std::vector<std::string>& file_list
 	return bond_types;
 }
 
-bool bondtype_exists(std::vector<BondType> bond_types, std::string name_of_type){
-	for (auto b: bond_types){
-		if (b.name == name_of_type){
-			return true;
+std::vector<AngleType> parse_angle_types(const std::vector<std::string>& file_list, const std::unordered_map<std::string, AtomType>& atom_types){
+	std::vector<AngleType> angle_types;
+	for (auto f: file_list){
+		std::ifstream file(f);
+		if (!file){
+			throw std::runtime_error("Cannot open force field file");
 		}
-	}
-	return false;
-}
+		json data;
+		file >> data;
+		for (auto angle_type: data["angles"]){
+			AngleType angle {};
+			angle.theta0_deg = angle_type["theta"];
+			angle.k = angle_type["k"];
+			angle.name = make_angle_key(angle_type["atoms"].at(0),angle_type["atoms"].at(1), angle_type["atoms"].at(2));
+			for (auto atom: angle_type["atoms"]){
+				if (!atom_types.contains(atom)){
+					throw std::runtime_error("Angles make use of undefined atom type");
+				}
+			}
+			if (!type_exists(angle_types, angle.name)){
+				angle_types.push_back(angle);
+			}
 
-int get_type_idx(std::vector<BondType> bond_types, std::string name_of_type){
-	for (size_t i=0; i<bond_types.size(); ++i){
-		if (bond_types[i].name == name_of_type){
-			return static_cast<int>(i);
 		}
+
 	}
-	return -1;
+	return angle_types;
 }

@@ -13,14 +13,33 @@ struct Bonds{
 	std::vector<int> type {};
 };
 
+struct Angles{
+	std::vector<int> i {};
+	std::vector<int> j {};
+	std::vector<int> k {};
+	std::vector<int> type {};
+};
+
 struct BondType{
 	std::string name {};
 	double r0 {};
-	double k {};
+	double k {}; // for potential, force with factor 2
 
 	void print(){
 		std::cout << "BONDTYPE: " << name << '\n';
 		std::cout << "\tr0: " << r0 << '\n';
+		std::cout << "\tk: " << k << '\n';
+	}
+};
+
+struct AngleType{
+	std::string name {};
+	double theta0_deg {};
+	double k {}; // for potential, force with factor 2 
+
+	void print(){
+		std::cout << "ANGLETYPE: " << name << '\n';
+		std::cout << "\ttheta: " << theta0_deg << '\n';
 		std::cout << "\tk: " << k << '\n';
 	}
 };
@@ -86,11 +105,14 @@ struct System{
 
 	std::vector<BondType> bond_types {};
 	Bonds bonds {};
+	std::vector<AngleType> angle_types {};
+	Angles angles {};
 
 	// Steps during initialization
-	void initialize(JobParameters job_params, std::unordered_map<std::string, AtomType> atom_types, std::vector<BondType> bond_types);
+	void initialize(JobParameters job_params, std::unordered_map<std::string, AtomType> atom_types, std::vector<BondType> bond_types, std::vector<AngleType> angle_types);
 	void initialize_atoms(const std::string& geom_file, std::unordered_map<std::string, AtomType> type_dict);
-	void initialize_bonds(const std::string& geom_file, std::vector<BondType> bond_types);
+	void initialize_bonds(const std::string& geom_file, std::vector<BondType> types_from_file);
+	void initialize_angles(const std::string& geom_file, std::vector<AngleType> types_from_file);
 	void set_lj_pairs();
 	void initialize_temperature(double T_K);
 	void energy_opt(std::string opt_out);
@@ -100,6 +122,7 @@ struct System{
 	void update_forces();
 	void update_lj_forces(bool verlet);
 	void update_bond_forces();
+	void update_angle_forces();
 	void update_positions();
 
 	// do all actions required in one simulation step
@@ -135,5 +158,10 @@ struct System{
 double minimum_image_distance(double dx, double L);
 inline Vec3 lj_force(double dx, double dy, double dz, double sigma, double epsilon);
 inline Vec3 bond_force(double dx, double dy, double dz, double r0, double k);
+inline double angle_force(double theta_deg, double theta0, double k);
+inline double angle(Vec3 a, Vec3 b);
+inline double dot(Vec3 a, Vec3 b);
+inline Vec3 orth_component_unit(Vec3 a, Vec3 b);
+inline double rad_to_deg(double rad);
 
 #endif

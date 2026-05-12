@@ -8,6 +8,7 @@ AVOGADRO = 6.02214076e23
 
 def build_system(
         bond_list, 
+        angle_list,
         # dihedrals,
         xyz_file, 
         n_molecule, 
@@ -29,8 +30,9 @@ def build_system(
     elements, coords_angst = load_xyz(xyz_file)
     n_atoms = len(elements)
     bonds = []
+    angles = []
     atoms = []
-    box_size_angst = np.array([20, 20, 20])
+    box_size_angst = np.array([180, 180, 180])
     molecule_dimensions_angst, centered_coords_angst = center_molecule(coords=coords_angst)
     print(centered_coords_angst)
 
@@ -48,11 +50,14 @@ def build_system(
         random_shift = [shiftx, shifty, shiftz]
         total_coords[i*n_atoms:(i+1)*n_atoms] = shift_molecule(rotated_molecule, random_shift)
 
-        new_bonds = np.array(bond_list) + i*n_atoms
         new_bonds = [[index + i * n_atoms for index in row] for row in bond_list]
         [bonds.append(b) for b in new_bonds]
 
+        new_angles = [[index + i * n_atoms for index in row] for row in angle_list]
+        [angles.append(a) for a in new_angles]
+
     print(bonds)
+    print(angles)
 
     write_xyz(elements=total_elements, coords=total_coords)
 
@@ -67,6 +72,7 @@ def build_system(
         atoms.append(atom)
     data["atoms"] = atoms
     data["bonds"] = bonds
+    data["angles"] = angles
 
     with open(f"{outfile}.json", "w", encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
@@ -142,5 +148,6 @@ def read_types():
 
 if __name__ == "__main__":
     bond_list = [[0,1], [0,2]]
+    angle_list = [[1, 0, 2]]
     # bond_list = []
-    build_system(outfile="test", bond_list=bond_list, xyz_file="h2o.xyz", n_molecule=20) 
+    build_system(outfile="test", bond_list=bond_list, xyz_file="h2o.xyz", n_molecule=200, angle_list=angle_list) 

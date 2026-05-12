@@ -1,11 +1,6 @@
-- restructure code:
-    - positions, velocity, forces, masses in flat list accesses only by index
-    - construct list of atom types upon initialization
-    - nested neighbor list
-    - bonds as list of bond pairs, same for dihedrals
-    - charges full pairs, later ewald
-- check equilibrium distance
-
+- Particle Mesh Ewald
+- exclude LJ within molecules
+- rdf
 - calculate pressure
 - solve two body problem with LJ-potential analytically
 - write max force to file
